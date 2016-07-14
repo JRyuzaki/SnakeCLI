@@ -82,10 +82,10 @@ bool specialpoint::isAlive(){
 char gamefield[gamefieldHeight][gamefieldWidth];
 
 int headDirection = 1;
+int score = 0;
+int gameDelay = 600;	
 
 snakepart head;
-
-long long frameNr = 0;	//TODO: Still used?
 
 point normalPoint;
 specialpoint specialPoint;
@@ -173,16 +173,24 @@ void userInput(){
 	while(1){
 		switch(getch()){
 			case 'a':
-				headDirection = 1;
+				if(headDirection != 2)
+					headDirection = 1;
 				break;
 			case 'd':
-				headDirection = 2;
+				if(headDirection != 1)
+					headDirection = 2;
 				break;
 			case 'w':
-				headDirection = 3;
+				if(headDirection != 4)
+					headDirection = 3;
 				break;
 			case 's':
-				headDirection = 4;
+				if(headDirection != 3)
+					headDirection = 4;
+				break;
+			case 'q':
+				endwin();
+				exit(0);
 				break;
 		}
 	}
@@ -202,6 +210,13 @@ bool snakeIsCollidingWithItself(){
   		currentSnakepart = currentSnakepart->next;
   	}
   	return false;
+}
+
+void gameOverScreen(){
+	clear();
+	printw("GAME OVER");
+	refresh();
+	getch();
 }
 
 void updateSnake(){
@@ -233,16 +248,30 @@ void updateSnake(){
 	if(head.x == normalPoint.x && head.y == normalPoint.y){
 		normalPoint.setPointCoordinatesRandomly();
 		head.addSnakepart();
+		score += 100;
+		gameDelay -= 10;
+
+		if(gameDelay < 100)
+			gameDelay = 100;
 	}
 
 	if(head.x == specialPoint.x && head.y == specialPoint.y){
 		resetSpecialPoint();
 		head.addSnakepart();
 		head.addSnakepart();
+
+		score += 500;
+		gameDelay -= 20;
+
+		if(gameDelay < 100)
+			gameDelay = 100;
 	}
 
+
 	if(snakeIsCollidingWithItself()){
-		head.next = NULL;	//TODO: Set Game Over
+		gameOverScreen();
+		endwin();
+		exit(0);
 	}
 }
 
@@ -276,10 +305,13 @@ void drawScene(){
 					color = BACKGROUND_COLOR;
 					break;
 			}
-   	 		setPixel(gamefield[y][x], color);
+   	 		setPixel(' ', color);
    	 	} 
 	  	setPixel('\n', 0);
 	}
+
+	std::string playerScore = "Score: " + std::to_string(score);
+	printw(playerScore.c_str());
 }
 
 void debugging(){
@@ -313,9 +345,8 @@ int main()
   		clear();
    		updateSnake();
   		drawScene();
-  		debugging();
  		refresh();
-   		std::this_thread::sleep_for(std::chrono::milliseconds(600));
+   		std::this_thread::sleep_for(std::chrono::milliseconds(gameDelay));
   	}
 
   	endwin();
