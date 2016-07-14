@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <thread>
+#include <chrono>
 
 #include <ncurses.h>
 
@@ -13,6 +14,15 @@
 #define BORDER_COLOR 2
 #define NORMAL_POINT_COLOR 3
 #define SPECIAL_POINT_COLOR 4
+
+
+const int gamefieldWidth = 40;
+const int gamefieldHeight = 14;
+const int specialPointMaxTime = 30;
+const int specialPointMinTime = 6;
+const int specialPointMaxLifeTime = 20;
+
+const char gameborderChar = '#';
 
 struct snakepart{
 	int x, y;
@@ -42,11 +52,32 @@ void snakepart::updateSnakepart(int prevX, int prevY){
 	y = prevY;
 }
 
+struct point{
+	unsigned int x, y;
 
-const int gamefieldWidth = 40;
-const int gamefieldHeight = 14;
+	void setPointCoordinatesRandomly();
+};
 
-const char gameborderChar = '#';
+void point::setPointCoordinatesRandomly(){
+	x = rand() % gamefieldWidth;
+	y = rand() % gamefieldHeight;
+}
+
+struct specialpoint : point{
+	bool active;
+	std::chrono::high_resolution_clock::time_point startTime;
+	int lifeTime = 12;
+
+	bool isAlive();
+};
+
+bool specialpoint::isAlive(){
+	auto currentTimer = std::chrono::high_resolution_clock::now();
+
+	if(std::chrono::duration_cast<std::chrono::duration<float>>(currentTimer - startTime).count() > lifeTime)
+		return false;
+	return true;
+}
 
 char gamefield[gamefieldHeight][gamefieldWidth];
 
@@ -54,19 +85,25 @@ int headDirection = 1;
 
 snakepart head;
 
-long long frameNr = 0;
+long long frameNr = 0;	//TODO: Still used?
 
-unsigned int pointX, pointY;
+point normalPoint;
+specialpoint specialPoint;
 
-void setPointCoordinatesRandomly(){	//TODO: Random does not work
-	pointX = 4;//rand() % gamefieldWidth;
-	pointY = 4;//rand() % gamefieldHeight;
+int specialpointSpawnTime;
+std::chrono::high_resolution_clock::time_point startTimer;
+
+void resetSpecialPoint(){
+	specialpointSpawnTime = rand() % specialPointMaxTime + specialPointMinTime;
+	startTimer = std::chrono::high_resolution_clock::now();
+	specialPoint.active = false;
+	specialPoint.setPointCoordinatesRandomly();
+	specialPoint.lifeTime = rand() % specialPointMaxLifeTime;
 }
 
 void initializeGame(){
 	srand(time(NULL));
 
-	//Position Player in the middle of gamefield
 	int x,y;
 	x = round(gamefieldWidth / 2);
 	y = round(gamefieldHeight / 2);
@@ -79,13 +116,13 @@ void initializeGame(){
 	head.addSnakepart();
 	head.addSnakepart();
 
-	setPointCoordinatesRandomly();
-
+	normalPoint.setPointCoordinatesRandomly();
+	resetSpecialPoint();
 	
     init_pair(BACKGROUND_COLOR, COLOR_BLACK, COLOR_BLACK);
     init_pair(SNAKE_COLOR, COLOR_BLACK, COLOR_GREEN);
     init_pair(BORDER_COLOR, COLOR_BLACK, COLOR_MAGENTA);
-    init_pair(NORMAL_POINT_COLOR, COLOR_BLACK, COLOR_CYAN);
+    init_pair(NORMAL_POINT_COLOR, COLOR_CYAN, COLOR_CYAN);
     init_pair(SPECIAL_POINT_COLOR, COLOR_BLACK, COLOR_YELLOW);
 }
 
@@ -114,7 +151,22 @@ void clearGamefield(){
   		
   		currentSnakepart = currentSnakepart->next;
   	}
-  	gamefield[pointX][pointY] = 'a';
+  	gamefield[normalPoint.y][normalPoint.x] = 'a';
+
+  	if(specialPoint.active){
+  		if(!specialPoint.isAlive()){
+  			resetSpecialPoint();
+  		}else{
+  			gamefield[specialPoint.y][specialPoint.x] = 'A';
+  		}
+  	}else{
+  		auto currentTimer = std::chrono::high_resolution_clock::now();
+
+	  	if(std::chrono::duration_cast<std::chrono::duration<float>>(currentTimer - startTimer).count() >= specialpointSpawnTime){
+	  		specialPoint.active = true;
+			specialPoint.startTime = std::chrono::high_resolution_clock::now();
+	  	}
+  	}
 }
 
 void userInput(){
@@ -178,8 +230,14 @@ void updateSnake(){
 		break;
 	}
 
-	if(head.x == pointX && head.y == pointY){
-		setPointCoordinatesRandomly();
+	if(head.x == normalPoint.x && head.y == normalPoint.y){
+		normalPoint.setPointCoordinatesRandomly();
+		head.addSnakepart();
+	}
+
+	if(head.x == specialPoint.x && head.y == specialPoint.y){
+		resetSpecialPoint();
+		head.addSnakepart();
 		head.addSnakepart();
 	}
 
@@ -211,6 +269,9 @@ void drawScene(){
 				case 'a':
 					color = NORMAL_POINT_COLOR;
 					break;
+				case 'A':
+					color = SPECIAL_POINT_COLOR;
+					break;
 				default:
 					color = BACKGROUND_COLOR;
 					break;
@@ -221,6 +282,20 @@ void drawScene(){
 	}
 }
 
+void debugging(){
+	std::string playerPosition = "Player X=" + std::to_string(head.x) + "  Y=" + std::to_string(head.y)+"\n";
+	std::string pointPosition = "Point X=" + std::to_string(normalPoint.x) + "  Y=" + std::to_string(normalPoint.y)+"\n";
+	std::string specialPointSpawn;
+	if(specialPoint.active){
+		specialPointSpawn = "SpecialPoint Spawned!";
+	}else{
+		specialPointSpawn = "SpecialPoint SpawnTime=" + std::to_string(specialpointSpawnTime);
+	} 
+
+	printw(playerPosition.c_str());
+	printw(pointPosition.c_str());
+	printw(specialPointSpawn.c_str());
+}
 
 int main()
 {
@@ -238,6 +313,7 @@ int main()
   		clear();
    		updateSnake();
   		drawScene();
+  		debugging();
  		refresh();
    		std::this_thread::sleep_for(std::chrono::milliseconds(600));
   	}
